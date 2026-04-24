@@ -4,6 +4,10 @@
 FOLDER="Ip-bot-2.0"
 FILES=("http.txt" "socks4.txt" "socks5.txt")
 
+# Define Tiers (Country Codes) - Expanded lists to prevent skipping
+TIER1=("US" "GB" "CA" "AU" "DE" "FR" "JP" "KR" "IT" "ES" "NL" "SE" "NO" "DK" "FI" "NZ" "IE" "BE" "CH" "AT")
+TIER2=("BR" "RU" "IN" "CN" "MX" "ID" "TR" "VN" "PH" "MY" "AR" "CL" "CO" "ZA" "EG" "NG" "PK" "TH" "SA" "MA")
+
 # We use a loop to keep trying until a working proxy is found
 while true; do
     # 1. Randomly select one of the files from the array
@@ -27,15 +31,46 @@ while true; do
     echo "[*] Testing Proxy: $PROXY_LINE"
 
     # --- CHECK LOGIC START ---
-    # We use curl to check if the proxy is working.
-    # --proxy: uses the proxy string (e.g., http://1.2.3.4:8080)
-    # --max-time 5: gives the proxy 5 seconds to respond before giving up
-    # -s: silent mode
-    # -I: fetch headers only (faster)
+    # 1. Basic Connectivity Check (Google)
     if curl -s --proxy "$PROXY_LINE" --max-time 5 -I https://www.google.com > /dev/null; then
-        echo "[+] Proxy is WORKING!"
-        # BREAK the loop because we found a working proxy
-        break 
+        
+        # 3. Tier/Country Probability Check
+        # Get country code of the proxy
+        COUNTRY=$(curl -s --proxy "$PROXY_LINE" --max-time 5 http://ip-api.com/line/?fields=countryCode)
+        
+        # Determine which tier we want based on probability
+        # 0-84 (85%) = Tier 1 | 85-94 (10%) = Tier 2 | 95-99 (5%) = Tier 3
+        ROLL=$((RANDOM % 100))
+        
+        if [ $ROLL -lt 85 ]; then
+            # We want a T1 proxy
+            if [[ " ${TIER1[*]} " =~ " $COUNTRY " ]]; then
+                echo "[+] Valid Tier 1 Proxy ($COUNTRY)!"
+                break 
+            else
+                echo "[-] Wanted Tier 1, but got $COUNTRY. Skipping..."
+                continue
+            fi
+        elif [ $ROLL -lt 95 ]; then
+            # We want a T2 proxy
+            if [[ " ${TIER2[*]} " =~ " $COUNTRY " ]]; then
+                echo "[+] Valid Tier 2 Proxy ($COUNTRY)!"
+                break
+            else
+                echo "[-] Wanted Tier 2, but got $COUNTRY. Skipping..."
+                continue
+            fi
+        else
+            # We want a T3 proxy (Any country not in T1 or T2)
+            if [[ ! " ${TIER1[*]} " =~ " $COUNTRY " ]] && [[ ! " ${TIER2[*]} " =~ " $COUNTRY " ]]; then
+                echo "[+] Valid Tier 3 Proxy ($COUNTRY)!"
+                break
+            else
+                echo "[-] Wanted Tier 3, but got T1/T2. Skipping..."
+                continue
+            fi
+        fi
+
     else
         echo "[-] Proxy is DEAD. Trying another one..."
         # The loop continues and picks a new random proxy
